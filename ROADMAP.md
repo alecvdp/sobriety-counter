@@ -40,5 +40,6 @@ This document outlines potential features and improvements for the Sobriety Coun
 ## 🛠 Technical Improvements
 
 - **Packaging:** Create a standalone executable (using `pyinstaller`) so Python doesn't need to be installed on the target machine.
+- **Cross-Platform Support:** Create dedicated installers for Windows (.exe/.msi) and Linux (.deb/AppImage) alongside the Mac installer.
 - **Cloud Sync:** Sync data to a private Gist or cloud storage so the count is accessible across devices.
 - **Tests:** Add unit tests for `sobriety_core.py` to ensure logic remains correct during future refactors.
