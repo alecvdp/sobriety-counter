@@ -3,56 +3,14 @@
 Sobriety Day Counter - A tool to track and celebrate your sobriety journey
 """
 
-import json
-import os
-from datetime import datetime, timedelta
-from pathlib import Path
-
-QUOTES = [
-    "One day at a time.",
-    "Progress, not perfection.",
-    "You are stronger than you think.",
-    "Every day sober is a victory.",
-    "Recovery is worth it. You are worth it.",
-    "Fall seven times, stand up eight.",
-    "The only way out is through.",
-    "You didn't come this far to only come this far.",
-    "Courage doesn't mean you're not afraid. It means you go anyway.",
-    "Small steps every day lead to big changes.",
-    "Be proud of how hard you're trying.",
-    "Your future is created by what you do today, not tomorrow.",
-    "Healing is not linear, but you're moving forward.",
-    "You are doing something incredibly brave.",
-    "The best view comes after the hardest climb.",
-]
-
-DATA_FILE = Path.home() / ".sobriety_counter.json"
-
-
-def load_data():
-    """Load sobriety start date from file"""
-    if DATA_FILE.exists():
-        with open(DATA_FILE, 'r') as f:
-            data = json.load(f)
-            return datetime.fromisoformat(data['start_date'])
-    return None
-
-
-def save_data(start_date):
-    """Save sobriety start date to file"""
-    with open(DATA_FILE, 'w') as f:
-        json.dump({'start_date': start_date.isoformat()}, f)
-
-
-def get_daily_quote(days):
-    """Get a consistent quote for the day based on days sober"""
-    return QUOTES[days % len(QUOTES)]
-
+import sys
+from datetime import date, datetime
+import sobriety_core as core
 
 def display_counter(start_date):
     """Display the sobriety counter and daily quote"""
-    now = datetime.now()
-    delta = now - start_date
+    today = date.today()
+    delta = today - start_date
     days = delta.days
     
     print("\n" + "=" * 50)
@@ -68,7 +26,8 @@ def display_counter(start_date):
         print(f"  Years: {years} (and {remaining_days} days)")
     
     print("\n" + "-" * 50)
-    print(f'\n  "{get_daily_quote(days)}"')
+    # Use local quotes only for CLI to ensure instant response
+    print(f'\n  "{core.get_random_quote(allow_network=False)}"')
     print("\n" + "-" * 50)
     print(f"\n  Keep going! 💪")
     print("=" * 50 + "\n")
@@ -83,17 +42,18 @@ def set_start_date():
     date_input = input().strip()
     
     if not date_input:
-        start_date = datetime.now()
-        print(f"\n✓ Starting today: {start_date.strftime('%Y-%m-%d')}")
+        start_date = date.today()
+        print(f"\n✓ Starting today: {start_date.isoformat()}")
     else:
         try:
-            start_date = datetime.strptime(date_input, '%Y-%m-%d')
-            print(f"\n✓ Start date set to: {start_date.strftime('%Y-%m-%d')}")
+            # Parse string to date
+            start_date = date.fromisoformat(date_input)
+            print(f"\n✓ Start date set to: {start_date.isoformat()}")
         except ValueError:
             print("\n✗ Invalid date format. Using today instead.")
-            start_date = datetime.now()
+            start_date = date.today()
     
-    save_data(start_date)
+    core.save_data(start_date)
     return start_date
 
 
@@ -112,7 +72,7 @@ def reset_counter():
 
 def main():
     """Main function"""
-    start_date = load_data()
+    start_date = core.load_data()
     
     if start_date is None:
         start_date = set_start_date()

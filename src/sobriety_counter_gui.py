@@ -3,117 +3,17 @@
 Sobriety Day Counter GUI - A graphical tool to track and celebrate your sobriety journey
 """
 
-import json
 import sys
-import random
-from datetime import datetime
-from pathlib import Path
-from urllib import request
-from urllib.error import URLError
+import threading
+from datetime import date, datetime
+import sobriety_core as core
 
 try:
     import tkinter as tk
-    from tkinter import messagebox, simpledialog
+    from tkinter import messagebox
 except ImportError:
     print("Error: tkinter not available. Installing python-tk package...")
     sys.exit(1)
-
-QUOTES = [
-    "One day at a time.\n— Anonymous",
-    "Progress, not perfection.\n— Anonymous",
-    "You are stronger than you think.\n— A.A. Milne",
-    "Every day sober is a victory.\n— Anonymous",
-    "Recovery is worth it. You are worth it.\n— Anonymous",
-    "Fall seven times, stand up eight.\n— Japanese Proverb",
-    "The only way out is through.\n— Robert Frost",
-    "You didn't come this far to only come this far.\n— Anonymous",
-    "Courage doesn't mean you're not afraid.\nIt means you go anyway.\n— Anonymous",
-    "Small steps every day lead to big changes.\n— Anonymous",
-    "Be proud of how hard you're trying.\n— Anonymous",
-    "Your future is created by what you do today,\nnot tomorrow.\n— Anonymous",
-    "Healing is not linear,\nbut you're moving forward.\n— Anonymous",
-    "You are doing something incredibly brave.\n— Anonymous",
-    "The best view comes after the hardest climb.\n— Anonymous",
-    "Rock bottom became the solid foundation\non which I rebuilt my life.\n— J.K. Rowling",
-    "Sobriety was the greatest gift I ever gave myself.\n— Rob Lowe",
-    "The opposite of addiction is connection.\n— Johann Hari",
-    "You are worthy of a beautiful life.\n— Anonymous",
-    "Recovery is an acceptance that your life is in shambles\nand you have to change.\n— Jamie Lee Curtis",
-    "She stood in the storm, and when the wind\ndid not blow her away, she adjusted her sails.\n— Elizabeth Edwards",
-    "What lies behind us and what lies before us\nare tiny matters compared to what lies within us.\n— Ralph Waldo Emerson",
-    "You don't have to see the whole staircase,\njust take the first step.\n— Martin Luther King Jr.",
-    "The greatest glory in living lies not in never falling,\nbut in rising every time we fall.\n— Nelson Mandela",
-    "It does not matter how slowly you go\nas long as you do not stop.\n— Confucius",
-]
-
-DATA_FILE = Path.home() / ".sobriety_counter.json"
-
-
-def get_random_quote():
-    """Get a random motivational quote from an API or fallback to local quotes"""
-    try:
-        # Try to get a quote from ZenQuotes API (free, no key required)
-        req = request.Request(
-            'https://zenquotes.io/api/random',
-            headers={'User-Agent': 'Mozilla/5.0'}
-        )
-        with request.urlopen(req, timeout=3) as response:
-            data = json.loads(response.read().decode())
-            if data and len(data) > 0:
-                quote = data[0]['q']
-                author = data[0]['a']
-                
-                # Keep quotes reasonably short
-                if len(quote) > 150:
-                    raise ValueError("Quote too long")
-                
-                # Filter for relevant themes: recovery, strength, perseverance, change, growth
-                relevant_keywords = [
-                    'strength', 'strong', 'courage', 'brave', 'persist', 'persever',
-                    'change', 'grow', 'progress', 'journey', 'overcome', 'triumph',
-                    'difficult', 'hard', 'struggle', 'challenge', 'endure', 'fight',
-                    'step', 'forward', 'better', 'improve', 'heal', 'recovery',
-                    'today', 'tomorrow', 'future', 'hope', 'believe', 'faith',
-                    'fall', 'rise', 'fail', 'success', 'try', 'effort',
-                    'mind', 'will', 'power', 'control', 'choice', 'decide',
-                    'worth', 'deserve', 'value', 'life', 'live', 'light', 'dark'
-                ]
-                
-                quote_lower = quote.lower()
-                
-                # Check if quote contains relevant keywords or is about general wisdom/life
-                has_relevant_theme = any(keyword in quote_lower for keyword in relevant_keywords)
-                
-                # Avoid quotes that are too specific to other topics (business, money, etc)
-                avoid_keywords = ['money', 'business', 'profit', 'market', 'sell', 'buy', 'price']
-                has_irrelevant_theme = any(keyword in quote_lower for keyword in avoid_keywords)
-                
-                if has_relevant_theme and not has_irrelevant_theme:
-                    return f"{quote}\n— {author}"
-                else:
-                    # If quote doesn't match criteria, fallback to local quotes
-                    raise ValueError("Quote not relevant")
-                    
-    except (URLError, Exception):
-        pass
-    
-    # Fallback to local quotes
-    return random.choice(QUOTES)
-
-
-def load_data():
-    """Load sobriety start date from file"""
-    if DATA_FILE.exists():
-        with open(DATA_FILE, 'r') as f:
-            data = json.load(f)
-            return datetime.fromisoformat(data['start_date'])
-    return None
-
-
-def save_data(start_date):
-    """Save sobriety start date to file"""
-    with open(DATA_FILE, 'w') as f:
-        json.dump({'start_date': start_date.isoformat()}, f)
 
 
 class SobrietyCounterApp:
@@ -128,7 +28,7 @@ class SobrietyCounterApp:
         self.root.attributes('-topmost', True)
         self.root.after(1000, lambda: self.root.attributes('-topmost', False))
         
-        self.start_date = load_data()
+        self.start_date = core.load_data()
         
         if self.start_date is None:
             self.root.after(100, self.setup_start_date)
@@ -169,13 +69,13 @@ class SobrietyCounterApp:
         date_entry = tk.Entry(frame, width=15, font=('SF Mono', 12), bg='#2a2a40', fg='#ffffff', 
                              insertbackground='#ffffff', relief='flat', bd=5)
         date_entry.pack(side=tk.LEFT, padx=5)
-        date_entry.insert(0, datetime.now().strftime('%Y-%m-%d'))
+        date_entry.insert(0, date.today().isoformat())
         
         def submit():
             date_str = date_entry.get().strip()
             try:
-                self.start_date = datetime.strptime(date_str, '%Y-%m-%d')
-                save_data(self.start_date)
+                self.start_date = date.fromisoformat(date_str)
+                core.save_data(self.start_date)
                 dialog.destroy()
                 self.update_display()
             except ValueError:
@@ -265,7 +165,7 @@ class SobrietyCounterApp:
         
         self.quote_label = tk.Label(
             quote_card,
-            text="",
+            text="Loading quote...",
             font=('SF Pro Text', 14, 'italic'),
             bg='#16213e',
             fg='#36D1DC',
@@ -330,8 +230,8 @@ class SobrietyCounterApp:
         if self.start_date is None:
             return
         
-        now = datetime.now()
-        delta = now - self.start_date
+        today = date.today()
+        delta = today - self.start_date
         days = delta.days
         
         # Update days with better formatting
@@ -359,9 +259,24 @@ class SobrietyCounterApp:
         
         self.breakdown_label.config(text=breakdown)
         
-        # Update quote - always get a fresh random quote
-        quote = get_random_quote()
+        # Update quote in background thread
+        self.fetch_quote_async()
+        
+    def fetch_quote_async(self):
+        """Fetch quote in a background thread to prevent UI freezing"""
+        self.refresh_btn.config(state='disabled', text="Loading...")
+        
+        def fetch():
+            quote = core.get_random_quote(allow_network=True)
+            # Schedule UI update on main thread
+            self.root.after(0, lambda: self.finish_quote_update(quote))
+            
+        threading.Thread(target=fetch, daemon=True).start()
+        
+    def finish_quote_update(self, quote):
+        """Update UI with fetched quote"""
         self.quote_label.config(text=f'"{quote}"')
+        self.refresh_btn.config(state='normal', text="↻  Refresh")
     
     def reset_counter(self):
         """Reset the counter"""
