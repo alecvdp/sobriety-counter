@@ -1,5 +1,7 @@
 """
 Core logic for Sobriety Counter applications (CLI and GUI).
+Acts as a facade over the SQLite database layer while maintaining
+backward-compatible helper functions.
 """
 import json
 import random
@@ -8,7 +10,9 @@ from pathlib import Path
 from urllib import request
 from urllib.error import URLError
 
-# Constants
+import sobriety_db as db
+
+# Legacy data file (used for migration only)
 DATA_FILE = Path.home() / ".sobriety_counter.json"
 
 QUOTES = [
@@ -39,42 +43,50 @@ QUOTES = [
     "It does not matter how slowly you go\nas long as you do not stop.\n— Confucius",
 ]
 
+
+def init():
+    """Initialize the database and run any migrations."""
+    db.migrate_from_json()
+
+
+def get_connection():
+    """Get a database connection."""
+    return db.get_connection()
+
+
+# --- Backward-compatible helpers (operate on first tracker) ---
+
 def load_data():
     """
-    Load sobriety start date from file.
-    Returns a date object (YYYY-MM-DD) or None.
-    Handles backward compatibility with datetime strings.
+    Load sobriety start date from the database.
+    Returns a date object or None.
+    For backward compatibility, returns the first active tracker's start date.
     """
-    if DATA_FILE.exists():
-        try:
-            with open(DATA_FILE, 'r') as f:
-                data = json.load(f)
-                date_str = data.get('start_date')
-                if not date_str:
-                    return None
-                
-                # Handle both date and datetime strings
-                try:
-                    return date.fromisoformat(date_str)
-                except ValueError:
-                    # Try parsing as datetime and converting to date
-                    return datetime.fromisoformat(date_str).date()
-        except (json.JSONDecodeError, ValueError):
-            # If file is corrupted, return None (effectively reset)
-            return None
+    conn = db.get_connection()
+    trackers = db.get_trackers(conn)
+    conn.close()
+    if trackers:
+        return date.fromisoformat(trackers[0]['start_date'])
     return None
+
 
 def save_data(start_date):
     """
-    Save sobriety start date to file.
-    Accepts date or datetime object.
+    Save sobriety start date.
+    For backward compatibility, creates or updates the first tracker.
     """
-    # Ensure we are saving a date object (stripping time if present)
     if isinstance(start_date, datetime):
         start_date = start_date.date()
-        
-    with open(DATA_FILE, 'w') as f:
-        json.dump({'start_date': start_date.isoformat()}, f)
+    conn = db.get_connection()
+    trackers = db.get_trackers(conn)
+    if trackers:
+        db.update_tracker(conn, trackers[0]['id'], start_date=start_date)
+    else:
+        db.add_tracker(conn, "My Sobriety", "Alcohol", start_date)
+    conn.close()
+
+
+# --- Quote fetching ---
 
 def get_random_quote(allow_network=True):
     """
@@ -84,7 +96,6 @@ def get_random_quote(allow_network=True):
     """
     if allow_network:
         try:
-            # Try to get a quote from ZenQuotes API (free, no key required)
             req = request.Request(
                 'https://zenquotes.io/api/random',
                 headers={'User-Agent': 'Mozilla/5.0'}
@@ -94,12 +105,10 @@ def get_random_quote(allow_network=True):
                 if data and len(data) > 0:
                     quote = data[0]['q']
                     author = data[0]['a']
-                    
-                    # Keep quotes reasonably short
+
                     if len(quote) > 150:
                         raise ValueError("Quote too long")
-                    
-                    # Filter for relevant themes
+
                     relevant_keywords = [
                         'strength', 'strong', 'courage', 'brave', 'persist', 'persever',
                         'change', 'grow', 'progress', 'journey', 'overcome', 'triumph',
@@ -110,20 +119,34 @@ def get_random_quote(allow_network=True):
                         'mind', 'will', 'power', 'control', 'choice', 'decide',
                         'worth', 'deserve', 'value', 'life', 'live', 'light', 'dark'
                     ]
-                    
+
                     quote_lower = quote.lower()
-                    
-                    # Check if quote contains relevant keywords
-                    has_relevant_theme = any(keyword in quote_lower for keyword in relevant_keywords)
-                    
-                    # Avoid quotes that are too specific to other topics
+                    has_relevant_theme = any(kw in quote_lower for kw in relevant_keywords)
+
                     avoid_keywords = ['money', 'business', 'profit', 'market', 'sell', 'buy', 'price']
-                    has_irrelevant_theme = any(keyword in quote_lower for keyword in avoid_keywords)
-                    
+                    has_irrelevant_theme = any(kw in quote_lower for kw in avoid_keywords)
+
                     if has_relevant_theme and not has_irrelevant_theme:
                         return f"{quote}\n— {author}"
         except (URLError, Exception):
             pass
-    
-    # Fallback to local quotes
+
     return random.choice(QUOTES)
+
+
+# --- Calculation helpers ---
+
+def calc_days(start_date):
+    """Calculate days since start_date."""
+    return (date.today() - start_date).days
+
+
+def calc_breakdown(days):
+    """Return a dict with weeks, months, month_remainder, years, year_remainder."""
+    return {
+        'weeks': days // 7,
+        'months': days // 30,
+        'month_remainder': days % 30,
+        'years': days // 365,
+        'year_remainder': days % 365,
+    }
